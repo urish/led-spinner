@@ -1,10 +1,8 @@
-// Makefile for AVR project Led Screen Display
-// Revision: $Id: Makefile 82 2005-10-23 11:07:25Z  $
-
 // ***********************************************************
 // Project: LedScreen
-// Author: Uri Shaked
 // Module description: Main Module
+// Author: Uri Shaked
+// Revision: $Id: Makefile 82 2005-10-23 11:07:25Z  $
 // ***********************************************************
 
 #include <avr/io.h>		 	// Most basic include files
