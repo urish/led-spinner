@@ -2,7 +2,7 @@
 // Project: LedScreen
 // Module description: Main Module
 // Author: Uri Shaked
-// Revision: $Id: Makefile 82 2005-10-23 11:07:25Z  $
+// Revision: $Id$
 // ***********************************************************
 
 #include <avr/io.h>		 	// Most basic include files
