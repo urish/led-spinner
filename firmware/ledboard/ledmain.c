@@ -30,6 +30,12 @@ SIGNAL(SIG_OVERFLOW1)
 	PORTA = g_bitmap[g_bitmap_pointer];
 }
 
+SIGNAL(SIG_INTERRUPT1)
+{
+	g_bitmap_pointer = 0;
+	TCNT1 = ~counter_cycle;
+}
+
 void beep (unsigned char cycles, unsigned char pitch) {
 	char i;
 
@@ -61,6 +67,12 @@ int main(void) {
 	TCNT1	= ~counter_cycle;
 	TIMSK	= BV(TOIE1);
 	sei();
+	
+	/* Setup INT 1 */
+	DDRD	&= ~BV(PD3);
+	PORTD	|= BV(PD3);
+	MCUCR	= (MCUCR & 0xf0) | BV(ISC11);
+	GICR	|= BV(INT1);
 
 	/* Play the first row */
 	PORTA = g_bitmap[g_bitmap_pointer];
