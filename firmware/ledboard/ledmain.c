@@ -19,7 +19,7 @@
 #define BEEP_HIGH (0x40)
 #define BEEP_LOW (0)
 
-const int counter_cycle = 200;
+const int counter_cycle = 1667;
 const int counter_resolution = BV(CS10); /* prescale 1 */
 
 int g_bitmap_pointer = 0;
