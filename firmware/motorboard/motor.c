@@ -31,10 +31,29 @@ typedef unsigned char uint8;
 typedef unsigned long uint16;
 typedef unsigned char bool;
 
+typedef struct
+{
+	char data[32];
+	uint8 size;
+	uint8 pointer;
+} io_buffer;
+
+/*** TWI-Related constants ***/
+#define TWSR_CONTROL_MASK				(0xF8)
+
+/* TWI status masks */
+#define TWI_SLAVE_RECEIVE_START			(0x60)
+#define TWI_SLAVE_RECEIVE_DATA			(0x80)
+#define TWI_SLAVE_RECEIVE_STOP			(0xA0)
+#define TWI_SLAVE_TRANSMIT_START		(0xA8)
+#define TWI_SLAVE_TRANSMIT_ACK_SEND		(0xB8)
+#define TWI_SLAVE_TRANSMIT_NACK_SEND	(0xC0)
+#define TWI_SLAVE_TRANSMIT_FINISHED		(0xC8)
+
 volatile uint8	buffer[20] 		= {0};
 volatile uint8	buffer_len 		= 0;
 volatile uint8	buffer_ptr		= 0;
-volatile uint16	counter_cycle	= 25000;
+volatile uint16	counter_cycle	= 8300;//12500;
 volatile uint8	accel_rate		= 0;
 volatile bool	sense_mode 		= 0;
 
@@ -273,7 +292,7 @@ void jumper_mode()
 //
 int main(void) 
 {
-	uint8	j;
+	uint8	j = 0;
 	const uint8 sequence[] = {2, 4, 1};
 	const uint8 resolution_table[] = 
 	{
@@ -295,8 +314,6 @@ int main(void)
 	PORTB= 0x0;
 	DDRB = 1 | (1 << DD_MISO);
 
-	/* Set MISO output, all others input */
-	DDR_SPI = (1 << DD_MISO);
 	
 	/* Setup timer 1 */
 	TIFR	= BV(TOV1);
@@ -306,17 +323,72 @@ int main(void)
 	sei();
 	
 	/* Check for jumper-control mode */
-	if (pins_connected(DD_AUX0, DD_AUX1)) {
+	if (pins_connected(DD_AUX0, DD_AUX1)) 
+	{
 		jumper_mode();
 	}
+	
+	DDRB = 0;
+	PORTB = 0;
+	
+	/* Pullup I2C port */
+	DDRC = 0x0;
+	PORTC = 0xff;
+	
+	TWCR	= BV(TWEA) | BV(TWEN);
+	TWAR	= 0x15 << 1;
+
+	while (cmd != 0xfa)
+	{
+		while (!(TWCR & BV(TWINT)));
+	
+		switch (TWSR & TWSR_CONTROL_MASK)
+		{
+		case TWI_SLAVE_RECEIVE_START:		
+			/* Transmission start in Slave-Receive mode */
+			j = 0;
+			break;
+		
+		case TWI_SLAVE_RECEIVE_DATA:
+			/* Acknowledged data byte received. */
+			buffer[j++] = TWDR;
+			break;
+		
+		case TWI_SLAVE_RECEIVE_STOP:  /* STOP or Repeated-Start condition */
+			TWCR |= BV(TWEA);
+			break;
+			
+		case TWI_SLAVE_TRANSMIT_START:
+			TWDR = 0xcc;
+			TWCR |= BV(TWEA);
+			break;
+		
+		case TWI_SLAVE_TRANSMIT_ACK_SEND:
+			break;
+			
+		case TWI_SLAVE_TRANSMIT_NACK_SEND:
+			break;
+			
+		case TWI_SLAVE_TRANSMIT_FINISHED:
+			TWCR |= BV(TWEA);
+			break;
+		}
+		
+		// Release the TWI Bus.
+		TWCR |= BV(TWINT);
+	}
+
+	TWCR	= 0;
+
+	/* Set MISO output, all others input */
+	DDR_SPI = (1 << DD_MISO);
 
 	/* Enable SPI */
 	SPCR = (1 << SPE);
-
 	for (;;)
 	{
 		while (!(SPSR & (1 << SPIF)));
-
+		
 		/* Get Control */
 		cmd = SPDR;
 		
