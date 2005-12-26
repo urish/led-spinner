@@ -23,19 +23,24 @@ const int counter_cycle = 1100;
 const int counter_resolution = BV(CS10); /* prescale 1 */
 
 int g_bitmap_pointer = 0;
+int is_hidden = 1;
 
 SIGNAL(SIG_OVERFLOW1)
 {
 	TCNT1 = ~counter_cycle;
 
+	PORTA = is_hidden ? 0 : g_bitmap[g_bitmap_pointer];
 	g_bitmap_pointer++;
 	g_bitmap_pointer %= ARRAY_ENTRIES(g_bitmap);
-	PORTA = g_bitmap[g_bitmap_pointer];
+	if (!g_bitmap_pointer) {
+		is_hidden = 1;
+	}
 }
 
 SIGNAL(SIG_INTERRUPT1)
 {
 	g_bitmap_pointer = 0;
+	is_hidden = 0;
 	TCNT1 = ~counter_cycle;
 }
 
