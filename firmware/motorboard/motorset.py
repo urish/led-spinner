@@ -8,7 +8,11 @@ import time
 # SUP board driverr
 import supdrv
 
-MOTOR_DEVICE_ID = 0x15
+MOTOR_DEVICE_ID		= 0x15
+
+# The following are used in the RPM calculation
+MOTOR_BOARD_CLOCK	= 1.0 # MHZ
+STEPS_PER_REVOLUTION= 12
 
 RESOLUTION_TABLE = {
 	0: 	1,
@@ -37,13 +41,16 @@ def cmd_play():
 def cmd_show():
 	send_command(4)
 	resp = read_response()
-	timer_scaler, timer_value = struct.unpack('=bH', resp[:3])
+	timer_scaler_index, timer_value = struct.unpack('=bH', resp[:3])
+	timer_scaler = RESOLUTION_TABLE[timer_scaler_index]
 	print "Timer = %d" % (timer_value, )
-	print "Timer scaler = %d" % (RESOLUTION_TABLE[timer_scaler], )
+	print "Timer scaler = %d" % (timer_scaler, )
 	seq = []
 	for i in xrange(ord(resp[5])):
 		seq += [ord(resp[6+i]), ]
 	print "Sequence = %s" % (seq, )
+	rpm = (60.0 * 10**6 * MOTOR_BOARD_CLOCK) / (timer_value * timer_scaler) / STEPS_PER_REVOLUTION
+	print "Approx. RPM: %.1f" % (rpm, )
 
 def cmd_timer():
 	try:
