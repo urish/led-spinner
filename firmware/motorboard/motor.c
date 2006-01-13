@@ -8,6 +8,7 @@
 #include <avr/io.h>              // Most basic include files
 #include <avr/interrupt.h>       // Add the necessary ones
 #include <avr/signal.h>          // here
+#include <util/twi.h>
 #include <string.h>
 
 #define BEEP_HIGH (0x40)
@@ -33,29 +34,46 @@ typedef unsigned char bool;
 
 typedef struct
 {
-	char data[32];
 	uint8 size;
 	uint8 pointer;
+	char data[32];
 } io_buffer;
+
+typedef struct
+{
+	uint8 cmd;
+	union {
+		uint8 beep_constant;
+		uint16 counter_cycle;
+		uint8 resolution_index;
+		struct {
+			uint8 size;
+			uint8 data[1];
+		} buffer;
+	};
+} motor_cmd;
+
+typedef struct
+{
+	uint8 resolution;
+	uint16 counter_cycle;
+	struct {
+		uint8 size;
+		uint8 data[16];
+	} buffer;
+} motor_report;
 
 /*** TWI-Related constants ***/
 #define TWSR_CONTROL_MASK				(0xF8)
 
-/* TWI status masks */
-#define TWI_SLAVE_RECEIVE_START			(0x60)
-#define TWI_SLAVE_RECEIVE_DATA			(0x80)
-#define TWI_SLAVE_RECEIVE_STOP			(0xA0)
-#define TWI_SLAVE_TRANSMIT_START		(0xA8)
-#define TWI_SLAVE_TRANSMIT_ACK_SEND		(0xB8)
-#define TWI_SLAVE_TRANSMIT_NACK_SEND	(0xC0)
-#define TWI_SLAVE_TRANSMIT_FINISHED		(0xC8)
-
-volatile uint8	buffer[20] 		= {0};
+volatile uint8	buffer[16] 		= {0};
 volatile uint8	buffer_len 		= 0;
 volatile uint8	buffer_ptr		= 0;
-volatile uint16	counter_cycle	= 8300;//12500;
+volatile uint16	counter_cycle	= 25000;//8300 = 600RPM;//12500;
 volatile uint8	accel_rate		= 0;
-volatile bool	sense_mode 		= 0;
+
+io_buffer i2c_recv_buffer = {0};
+io_buffer i2c_send_buffer = {0};
 
 void beep (unsigned char cycles, unsigned char pitch);
 
@@ -69,11 +87,6 @@ SIGNAL(SIG_OVERFLOW1)
 	buffer_ptr++;
 	buffer_ptr %= buffer_len;
 	PORTA = buffer[buffer_ptr];
-
-	if (sense_mode)
-	{
-		PORTB = ~PORTB;
-	}
 }
 
 void beep (unsigned char cycles, unsigned char pitch) 
@@ -287,6 +300,82 @@ void jumper_mode()
 	}
 }
 
+void i2c_init(void)
+{
+	/* Pullup I2C port */
+	DDRC = 0x0;
+	PORTC = 0xff;
+	
+	TWCR	= BV(TWEA) | BV(TWEN);
+	TWAR	= 0x15 << 1;
+}
+
+void i2c_wait(void)
+{
+	while (!(TWCR & BV(TWINT)));
+}
+
+void i2c_handler(void) 
+{
+
+	if (!(TWCR & BV(TWINT)))
+	{
+		return;
+	}
+	
+	/* Set the interrupt flag (according to AVR docs, clearing it is writing
+		logic one to it) */
+	TWCR &= ~BV(TWINT);
+	
+	switch (TWSR & TWSR_CONTROL_MASK)
+	{
+	/* Slave Receiver */
+	case TW_SR_SLA_ACK:
+	case TW_SR_ARB_LOST_SLA_ACK:
+		/* Transmission start in Slave-Receive mode */
+		i2c_recv_buffer.pointer = 0;
+		i2c_recv_buffer.size	= 0;
+		break;
+	
+	case TW_SR_DATA_ACK:	
+		/* Acknowledged data byte received. */
+		// XXX avoid overflow
+		i2c_recv_buffer.data[i2c_recv_buffer.pointer] = TWDR;
+		i2c_recv_buffer.pointer++;
+		break;
+	
+	case TW_SR_STOP:
+		/* STOP or Repeated-Start condition */
+		i2c_recv_buffer.size	= i2c_recv_buffer.pointer;
+		TWCR |= BV(TWEA);
+		break;
+	
+	/* Slave Transmitter */	
+	case TW_ST_SLA_ACK:
+	case TW_ST_ARB_LOST_SLA_ACK:
+		TWDR = i2c_send_buffer.size;
+		i2c_send_buffer.pointer = 0;
+		TWCR |= BV(TWEA);
+		break;
+	
+	case TW_ST_DATA_ACK:
+		TWDR = i2c_send_buffer.data[i2c_send_buffer.pointer];
+		i2c_send_buffer.pointer++;
+		break;
+			
+	case TW_ST_DATA_NACK:
+		break;
+		
+	case TW_ST_LAST_DATA:
+		i2c_send_buffer.pointer = 0;
+		TWCR |= BV(TWEA);
+		break;
+	}
+	
+	// Release the TWI Bus.
+	TWCR |= BV(TWINT);
+}
+
 // ***********************************************************
 // Main program
 //
@@ -303,17 +392,17 @@ int main(void)
 		BV(CS12) | BV(CS10)		/* prescale 1024 */
 	};
 	uint8	resolution	= 0;
-	uint8	cmd			= 0;
+	motor_cmd * command = NULL;
+	motor_report * report = (motor_report*)i2c_send_buffer.data;
 	
 	beep(255, 50);
 	
 	memcpy((void*)buffer, sequence, sizeof(sequence));
-	buffer_len = sizeof(sequence)/sizeof(sequence[0]);
+	buffer_len = sizeof(sequence) / sizeof(sequence[0]);
 	
 	DDRA = 0xf;
 	PORTB= 0x0;
 	DDRB = 1 | (1 << DD_MISO);
-
 	
 	/* Setup timer 1 */
 	TIFR	= BV(TOV1);
@@ -331,113 +420,51 @@ int main(void)
 	DDRB = 0;
 	PORTB = 0;
 	
-	/* Pullup I2C port */
-	DDRC = 0x0;
-	PORTC = 0xff;
-	
-	TWCR	= BV(TWEA) | BV(TWEN);
-	TWAR	= 0x15 << 1;
+	i2c_init();
 
-	while (cmd != 0xfa)
-	{
-		while (!(TWCR & BV(TWINT)));
-	
-		switch (TWSR & TWSR_CONTROL_MASK)
-		{
-		case TWI_SLAVE_RECEIVE_START:		
-			/* Transmission start in Slave-Receive mode */
-			j = 0;
-			break;
-		
-		case TWI_SLAVE_RECEIVE_DATA:
-			/* Acknowledged data byte received. */
-			buffer[j++] = TWDR;
-			break;
-		
-		case TWI_SLAVE_RECEIVE_STOP:  /* STOP or Repeated-Start condition */
-			TWCR |= BV(TWEA);
-			break;
-			
-		case TWI_SLAVE_TRANSMIT_START:
-			TWDR = 0xcc;
-			TWCR |= BV(TWEA);
-			break;
-		
-		case TWI_SLAVE_TRANSMIT_ACK_SEND:
-			break;
-			
-		case TWI_SLAVE_TRANSMIT_NACK_SEND:
-			break;
-			
-		case TWI_SLAVE_TRANSMIT_FINISHED:
-			TWCR |= BV(TWEA);
-			break;
-		}
-		
-		// Release the TWI Bus.
-		TWCR |= BV(TWINT);
-	}
-
-	TWCR	= 0;
-
-	/* Set MISO output, all others input */
-	DDR_SPI = (1 << DD_MISO);
-
-	/* Enable SPI */
-	SPCR = (1 << SPE);
 	for (;;)
 	{
-		while (!(SPSR & (1 << SPIF)));
+		i2c_handler();
 		
-		/* Get Control */
-		cmd = SPDR;
+		if (!i2c_recv_buffer.size) {
+			continue;
+		}
 		
-		spi_write_byte(0xae);
-		spi_write_byte(0x0);
-				
-		switch (cmd)
+		command = (motor_cmd*)i2c_recv_buffer.data;
+		
+		switch (command->cmd)
 		{
 		case 0:
-			beep(120, spi_read_byte());
+			beep(120, command->beep_constant);
 			break;
-					
+		
 		case 1:
-			counter_cycle = spi_read_word();
+			counter_cycle = command->counter_cycle;
 			break;
-				
+		
 		case 2:
-			resolution = spi_read_byte() % ARRAY_ENTRIES(resolution_table);
+			resolution = command->resolution_index % ARRAY_ENTRIES(resolution_table);
 			TCCR1B = resolution_table[resolution];
 			break;
 		
 		case 3:
-			buffer_len = spi_read_byte();
+			buffer_len = command->buffer.size;
 			for (j = 0; j < buffer_len; j++)
 			{
-				buffer[j] = spi_read_byte();
+				buffer[j] = command->buffer.data[j];
 			}
 			break;
-					
+
 		case 4:
-			spi_write_word(counter_cycle);
-			spi_write_byte(resolution);
-			spi_write_byte(buffer_len);
+			i2c_send_buffer.size = sizeof(*report);
+			report->counter_cycle = counter_cycle;
+			report->resolution	 = resolution;
+			report->buffer.size	 = buffer_len;			
 			for (j = 0; j < buffer_len; j++)
 			{
-				spi_write_byte(buffer[j]);
+				report->buffer.data[j] = buffer[j];
 			}
 			break;
-
-		case 7:
-			/* Enter sense mode */
-			SPCR &= ~(1 << SPE);
-			sense_mode = 1;
-			for (;;);
-		}
-
-		while (SPSR & (1 << SPIF))
-		{
-			SPDR = 0;
 		}
 	}
 }
