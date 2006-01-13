@@ -5,29 +5,26 @@
 // Revision: $Id$
 // ***********************************************************
 
-#include <avr/io.h>              // Most basic include files
-#include <avr/interrupt.h>       // Add the necessary ones
-#include <avr/signal.h>          // here
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/signal.h>
 #include <util/twi.h>
 #include <string.h>
 
-#define BEEP_HIGH (0x40)
-#define BEEP_LOW (0)
-
-#define DD_AUX0 (PB3)
-#define DD_AUX1 (PB4)
-
-#define DD_MISO (PB6)
-#define DDR_SPI (DDRB)
-#define DD_SCK (PB7)
-#define DD_MOSI (PB5)
+/* Jumper configurations */
+#define DD_JP0 (PB3)
+#define DD_JP1 (PB4)
+#define DD_JP2 (PB5)
+#define DD_JP3 (PB6)
+#define DD_JP4 (PB7)
 
 #define PINS_CONNECTED_MAGIC (0xa8)
 
+/* Generic macroes */
 #define BV(value) (1 << (value))
-
 #define ARRAY_ENTRIES(x) (sizeof(x)/sizeof((x)[0]))
 
+/* Types */
 typedef unsigned char uint8;
 typedef unsigned long uint16;
 typedef unsigned char bool;
@@ -63,22 +60,20 @@ typedef struct
 	} buffer;
 } motor_report;
 
-/*** TWI-Related constants ***/
-#define TWSR_CONTROL_MASK				(0xF8)
-
+/* Globals */
+/* note: everything that is accessed in interrupt code must be volatile */
 volatile uint8	buffer[16] 		= {0};
 volatile uint8	buffer_len 		= 0;
 volatile uint8	buffer_ptr		= 0;
-volatile uint16	counter_cycle	= 25000;//8300 = 600RPM;//12500;
+volatile uint16	counter_cycle	= 25000; //use 8300 for 600RPM
 volatile uint8	accel_rate		= 0;
 
 io_buffer i2c_recv_buffer = {0};
 io_buffer i2c_send_buffer = {0};
 
+/* Prototypes */
 void beep (unsigned char cycles, unsigned char pitch);
 
-// Define here the global static variables
-//
 
 SIGNAL(SIG_OVERFLOW1)
 {
@@ -144,45 +139,21 @@ int pins_connected(uint8 pin1, uint8 pin2)
 	return 1;
 }
 
-unsigned char spi_read_byte(void) 
-{
-	while (!(SPSR & (1 << SPIF)));
-	
-	return SPDR;
-}
-
-unsigned long spi_read_word(void)
-{
-	return (spi_read_byte() << 8) | spi_read_byte();
-}
-
-void spi_write_byte(unsigned char value)
-{
-	SPDR = value;
-	while (!(SPSR & (1 << SPIF)));
-}
-
-void spi_write_word(unsigned long value)
-{
-	spi_write_byte(value >> 8);
-	spi_write_byte(value & 0xff);
-}
-
 uint8 jumper_mode_read_jumpers()
 {
-	if (pins_connected(DD_AUX0, DD_AUX1)) {
-		if (pins_connected(DD_MOSI, DD_MISO)) {
+	if (pins_connected(DD_JP0, DD_JP1)) {
+		if (pins_connected(DD_JP2, DD_JP3)) {
 			return 5;
 		}
 		return 1;
 	}
-	if (pins_connected(DD_AUX1, DD_MOSI)) {
+	if (pins_connected(DD_JP1, DD_JP2)) {
 		return 2;
 	}
-	if (pins_connected(DD_MOSI, DD_MISO)) {
+	if (pins_connected(DD_JP2, DD_JP3)) {
 		return 3;
 	}
-	if (pins_connected(DD_MISO, DD_SCK)) {
+	if (pins_connected(DD_JP3, DD_JP4)) {
 		return 4;
 	}
 	return 0;
@@ -302,9 +273,9 @@ void jumper_mode()
 
 void i2c_init(void)
 {
-	/* Pullup I2C port */
-	DDRC = 0x0;
-	PORTC = 0xff;
+	/* Pullup I2C pins */
+	DDRC &= ~(BV(0) | BV(1));
+	PORTC = (BV(0) | BV(1));
 	
 	TWCR	= BV(TWEA) | BV(TWEN);
 	TWAR	= 0x15 << 1;
@@ -327,7 +298,7 @@ void i2c_handler(void)
 		logic one to it) */
 	TWCR &= ~BV(TWINT);
 	
-	switch (TWSR & TWSR_CONTROL_MASK)
+	switch (TW_STATUS)
 	{
 	/* Slave Receiver */
 	case TW_SR_SLA_ACK:
@@ -401,8 +372,6 @@ int main(void)
 	buffer_len = sizeof(sequence) / sizeof(sequence[0]);
 	
 	DDRA = 0xf;
-	PORTB= 0x0;
-	DDRB = 1 | (1 << DD_MISO);
 	
 	/* Setup timer 1 */
 	TIFR	= BV(TOV1);
@@ -412,14 +381,12 @@ int main(void)
 	sei();
 	
 	/* Check for jumper-control mode */
-	if (pins_connected(DD_AUX0, DD_AUX1)) 
+	if (pins_connected(DD_JP0, DD_JP1)) 
 	{
 		jumper_mode();
 	}
 	
-	DDRB = 0;
-	PORTB = 0;
-	
+	/* I2C Controlled mode */
 	i2c_init();
 
 	for (;;)
