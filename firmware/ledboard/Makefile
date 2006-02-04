@@ -1,29 +1,27 @@
-# Makefile for AVR project Led Screen Display
-# Revision: $Id$
+# $Id$
 
-SRCS		= ledmain.c
-OBJS		= ${SRCS:.c=.o}
-TARGET		= ledscreen
+CC			= sdcc
+MAIN_SOURCE	= ledboard.c
+MAIN_OBJECT = ${MAIN_SOURCE:.c=.o}
+SOURCES		= sdcc_bootldr.c i2c_slave.c
+OBJECTS		= ${SOURCES:.c=.o}
+HEADERS		= i2c_slave.h
+TARGET		= ${MAIN_SOURCE:.c=.hex}
+TARGET_ARCH	= pic16
+TARGET_CPU	= 18f2550
+OPT_FLAGS	= --fstack --optimize-df --optimize-cmp --optimize-goto --peep-asm --opt-code-size --obanksel=2
+TARGET_FLAGS= -m$(TARGET_ARCH) -p$(TARGET_CPU) 
+CFLAGS		= $(TARGET_FLAGS) $(OPT_FLAGS) --ivt-loc=0x800
+LDFLAGS		= $(TARGET_FLAGS) $(OPT_FLAGS) -Wl "-s ./18f2550-btldr.lkr" -llibc18f.lib
+LD			= sdcc
 
-CC			= avr-gcc
-LD			= avr-gcc
-LDFLAGS		= -mmcu=atmega32
-OBJCOPY		= avr-objcopy
-HEX_FORMAT	= ihex
-CFLAGS		= -D__AVR_ATmega32__ -mmcu=atmega32 -Wall -O2
-TARGET_ELF	= $(TARGET).elf
-TARGET_HEX	= $(TARGET).hex
+all:		$(TARGET)
 
-$(TARGET_HEX): $(TARGET_ELF)
-	$(OBJCOPY) --target $(HEX_FORMAT) -R .eeprom $(TARGET_ELF) $(TARGET_HEX)
+prog:		$(TARGET)
+	./writepic $(TARGET)
 
-prog: $(TARGET_HEX)
-	python ../spi/avrprog.py $(TARGET_HEX)
-
-$(TARGET_ELF): $(OBJS)
-	$(LD) $(LDFLAGS) -o $(TARGET_ELF) $(OBJS)
-
-`$(CC) -MM $(SRCS)`:
+$(TARGET):	$(MAIN_OBJECT) $(OBJECTS)
+	$(LD) $(MAIN_OBJECT)  $(LDFLAGS) $(OBJECTS)
 
 clean:
-	rm -rf $(TARGET_ELF) $(TARGET_HEX) $(OBJS)
+	rm -rf $(TARGET) *.o *.asm *.lst *.cod
