@@ -18,16 +18,7 @@
 
 // Timer counter cycle
 #define TIMER_COUNTER_CYCLE		(49911)
-#define TIMER_PRESCALER_VALUE	(0x0)
-
-/* Macros */
-#define ARRAY_ENTRIES(array) (sizeof(array)/sizeof((array)[0]))
-#define BV(value) (1 << (value))
-
-const int counter_cycle = 1100;
-
-int g_bitmap_pointer = 0;
-int is_hidden = 1;
+#define TIMER_PRESCALER_VALUE	(0x5)
 
 /* Interrupt handler */
 void interrupt1_handler() interrupt 1
