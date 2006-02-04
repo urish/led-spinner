@@ -39,14 +39,14 @@ typedef struct
 {
 	byte checksum;
 	byte command_code;
-	byte buf[16];
+	byte buf[22];
 } command_packet;
 
 typedef struct
 {
 	byte checksum;
 	byte error_code;
-	byte buf[16];
+	byte buf[22];
 } answer_packet;
 
 /* Interrupt handler */
