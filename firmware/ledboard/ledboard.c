@@ -165,7 +165,7 @@ void main(void)
 	TMR0L	= TIMER_COUNTER_CYCLE & 0xff;
 	T0CON	= TIMER_PRESCALER_VALUE & 0x7;
 	T0CONbits.TMR0ON	= 1;
-	INTCONbits.TMR0IE	= 0;
+	INTCONbits.TMR0IE	= 1;
 	INTCONbits.TMR0IF	= 0;
 	
 	/* Configure TMR1 */
@@ -175,7 +175,7 @@ void main(void)
 	T1CONbits.T1CKPS0	= 1; 	/* 8 bit prescaler */
 	T1CONbits.T1CKPS1	= 1; 	/* 8 bit prescaler */
 	T1CONbits.TMR1ON	= 1;
-	PIE1bits.TMR1IE		= 1;
+	PIE1bits.TMR1IE		= 0;
 	PIR1bits.TMR1IF		= 0;
 	
 	/* Configure INT2 (on RB2) */
