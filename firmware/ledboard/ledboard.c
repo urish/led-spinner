@@ -165,7 +165,7 @@ void main(void)
 	TMR0L	= TIMER_COUNTER_CYCLE & 0xff;
 	T0CON	= TIMER_PRESCALER_VALUE & 0x7;
 	T0CONbits.TMR0ON	= 1;
-	INTCONbits.TMR0IE	= 1;
+	INTCONbits.TMR0IE	= 0;
 	INTCONbits.TMR0IF	= 0;
 	
 	/* Configure TMR1 */
@@ -181,7 +181,7 @@ void main(void)
 	/* Configure INT2 (on RB2) */
 	TRISBbits.TRISB2	= 1; /* Configure INT2 pin as an input */
 	INTCON2bits.INTEDG2	= 1;
-	INTCON3bits.INT2IE 	= 1;
+	INTCON3bits.INT2IE 	= 0;
 	INTCON3bits.INT2IF	= 0;
 	
 	/* Enable interrupts */
@@ -216,6 +216,10 @@ void main(void)
 			g_int2_times[g_int2_times_index] = read_int2_counter();
 			g_int2_times_index++;
 			g_int2_times_index %= ARRAY_ENTRIES(g_int2_times);
+			/* Reset the stats, interrupt flag */
+			g_int2_counter_upper = 0;
+			TMR1H = 0;
+			TMR1L = 0;
 			INTCON3bits.INT2IF = 0;
 		}
 	}
