@@ -380,19 +380,19 @@ int main(void)
 	TIMSK	= BV(TOIE1);
 	sei();
 	
-	/* Check for jumper-control mode */
-	if (pins_connected(DD_JP0, DD_JP1)) 
-	{
-		jumper_mode();
-	}
-	
-	/* I2C Controlled mode */
 	i2c_init();
 
+	/* Main Loop */
 	for (;;)
 	{
+		/* Check for jumper-control mode initialization */
+		if (pins_connected(DD_JP0, DD_JP1)) 
+		{
+			jumper_mode();
+		}
+
+		/* Check and handle any I2C command we may get */
 		i2c_handler();
-		
 		if (!i2c_recv_buffer.size) {
 			continue;
 		}
