@@ -170,37 +170,6 @@ void wait100ms()
 	}
 }
 
-void accel_fast()
-{
-	uint8 i = 0;
-	uint16 j = 0;
-
-	counter_cycle = 30000;
-	/* wait 0.4 sec */
-	for (i = 0; i < 4; i++) 
-	{
-		wait100ms();
-	}
-
-	counter_cycle = 20000;
-	wait100ms();
-
-	counter_cycle = 15000;
-	wait100ms();
-
-	counter_cycle = 12000;
-	wait100ms();
-
-	counter_cycle = 10000;
-	wait100ms();
-
-	for (j = 10000; j >= 6000; j -= 100)
-	{
-		counter_cycle = j;
-		wait100ms();
-	}
-}
-
 void accel_slow()
 {
 	uint8 i = 0;
@@ -235,38 +204,39 @@ void accel_slow()
 void jumper_mode()
 {
 	uint8 mode = jumper_mode_read_jumpers();
-	uint8 new_mode = 0;
 	
 	beep(255, 20 + mode * 5);
 	
 	for (;;)
 	{
-		new_mode = jumper_mode_read_jumpers();
-		if (new_mode && (mode != new_mode)) {
-			mode = new_mode;
-			beep(255, 20 + mode * 5);
-			switch (mode)
+		mode = jumper_mode_read_jumpers();
+		switch (mode)
+		{
+		case 1:
+			counter_cycle = 25000;
+			break;
+		
+		case 2:
+			counter_cycle = 50000;
+			break;
+		
+		case 3:
+			if (counter_cycle < 50000)
 			{
-			case 1:
-				counter_cycle = 25000;
-				break;
-			
-			case 2:
-				counter_cycle = 50000;
-				break;
-			
-			case 3:
-				accel_fast();
-				break;
-			
-			case 4:
-				accel_slow();
-				break;
-
-			case 5:
-				counter_cycle = 12000;
-				break;
+				counter_cycle++;
 			}
+			break;
+		
+		case 4:
+			if (counter_cycle > 1000)
+			{
+				counter_cycle--;
+			}
+			break;
+
+		case 5:
+			accel_slow();
+			break;
 		}
 	}
 }
